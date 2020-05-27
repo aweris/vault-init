@@ -1,33 +1,29 @@
-FROM golang:1.14 AS builder
+FROM golang:1.14-alpine AS builder
 
-RUN apt-get -qq update && apt-get -yqq install upx
+ENV GO111MODULE=on
+ENV CGO_ENABLED=0
 
-ENV GO111MODULE=on \
-  CGO_ENABLED=0 \
-  GOOS=linux \
-  GOARCH=amd64
+RUN apk add --no-cache git=2.24.3-r0      \
+                       make=4.2.1-r2      \
+                       upx=3.95-r2        \
+                       binutils=2.33.1-r0
 
 WORKDIR /src
 
+COPY go.mod .
+COPY go.sum .
+
+RUN go mod download
+
 COPY . .
-RUN go build \
-  -a \
-  -trimpath \
-  -ldflags "-s -w -extldflags '-static'" \
-  -installsuffix cgo \
-  -tags netgo \
-  -mod vendor \
-  -o /bin/vault-init \
-  .
 
-RUN strip /bin/vault-init
-
-RUN upx -q -9 /bin/vault-init
-
-
-
+RUN make vault-init                 \
+ && strip /src/build/vault-init     \
+ && upx -q -9 /src/build/vault-init
 
 FROM scratch
+
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /bin/vault-init /bin/vault-init
+COPY --from=builder /src/build/vault-init /bin/vault-init
+
 CMD ["/bin/vault-init"]
