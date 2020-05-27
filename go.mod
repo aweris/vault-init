@@ -7,6 +7,7 @@ require (
 	cloud.google.com/go/storage v1.7.0
 	github.com/golang/protobuf v1.4.1 // indirect
 	github.com/golangci/golangci-lint v1.27.0
+	github.com/spf13/pflag v1.0.5
 	golang.org/x/net v0.0.0-20200506145744-7e3656a0809f // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	golang.org/x/sys v0.0.0-20200501145240-bc7a7d42d5c3 // indirect

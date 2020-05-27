@@ -25,6 +25,8 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/cloudkms/v1"
 	"google.golang.org/api/option"
+
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -82,6 +84,21 @@ type UnsealResponse struct {
 }
 
 func main() {
+	var (
+		showVersion bool
+	)
+
+	pflag.BoolVar(&showVersion, "version", false, "Prints version info")
+
+	pflag.Parse()
+
+	if showVersion {
+		fmt.Printf("Version    : %s\n", version)
+		fmt.Printf("Git Commit : %s\n", commit)
+		fmt.Printf("Build Date : %s\n", date)
+		os.Exit(0)
+	}
+
 	log.Println("Starting the vault-init service...")
 
 	vaultAddr = os.Getenv("VAULT_ADDR")
