@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/cloudkms/v1"
 	"google.golang.org/api/option"
 
@@ -133,13 +132,8 @@ func main() {
 
 	kmsCtx, kmsCtxCancel := context.WithCancel(context.Background())
 	defer kmsCtxCancel()
-	kmsClient, err := google.DefaultClient(kmsCtx, "https://www.googleapis.com/auth/cloudkms")
-	if err != nil {
-		log.Println(err)
-		return
-	}
 
-	kmsService, err = cloudkms.New(kmsClient)
+	kmsService, err := cloudkms.NewService(kmsCtx, option.WithScopes(cloudkms.CloudkmsScope))
 	if err != nil {
 		log.Println(err)
 		return
