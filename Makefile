@@ -23,11 +23,12 @@ GOFMT           := gofmt
 GOLANGCILINT    := $(GOBIN)/golangci-lint
 
 MODULE          := $(shell $(GOCMD) list -m)
+VERSION         ?= 1.1.3
 COMMIT          := $(strip $(shell [ -d .git ] && git describe --always --tags --dirty))
 BUILD_TIMESTAMP := $(shell date -u +"%Y-%m-%dT%H:%M:%S%Z")
 
 # Build variables
-BUILD_LDFLAGS   := '-s -w -extldflags -static'
+BUILD_LDFLAGS   := '-s -w -extldflags -static -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(BUILD_TIMESTAMP)'
 
 # Helper variables
 V = 0

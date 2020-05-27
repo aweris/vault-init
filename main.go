@@ -28,6 +28,11 @@ import (
 )
 
 var (
+	// version flags
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+
 	vaultAddr     string
 	gcsBucketName string
 	httpClient    http.Client
