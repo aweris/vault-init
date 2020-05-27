@@ -159,11 +159,7 @@ func main() {
 	}
 
 	signalCh := make(chan os.Signal)
-	signal.Notify(signalCh,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGKILL,
-	)
+	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
 
 	stop := func() {
 		log.Printf("Shutting down")
