@@ -158,7 +158,9 @@ func main() {
 		},
 	}
 
-	signalCh := make(chan os.Signal)
+	// graceful shutdown
+	signalCh := make(chan os.Signal, 1)
+
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
 
 	stop := func() {
