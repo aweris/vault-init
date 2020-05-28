@@ -1,7 +1,7 @@
 package vault
 
 import (
-	"github.com/sethvargo/vault-init/client"
+	"github.com/aweris/vault-init/client"
 )
 
 // API is a wrapper interface for vault init operations

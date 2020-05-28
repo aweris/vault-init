@@ -16,7 +16,7 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/sethvargo/vault-init/manager"
+	"github.com/aweris/vault-init/manager"
 )
 
 var (

@@ -1,4 +1,4 @@
-module github.com/sethvargo/vault-init
+module github.com/aweris/vault-init
 
 go 1.14
 

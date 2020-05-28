@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sethvargo/vault-init/client"
-	"github.com/sethvargo/vault-init/kms"
-	"github.com/sethvargo/vault-init/storage"
-	"github.com/sethvargo/vault-init/vault"
+	"github.com/aweris/vault-init/client"
+	"github.com/aweris/vault-init/kms"
+	"github.com/aweris/vault-init/storage"
+	"github.com/aweris/vault-init/vault"
 )
 
 const (
