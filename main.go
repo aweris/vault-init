@@ -8,8 +8,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/sethvargo/vault-init/kms"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -19,12 +17,11 @@ import (
 	"syscall"
 	"time"
 
-	"cloud.google.com/go/storage"
-	"google.golang.org/api/option"
-
 	"github.com/spf13/pflag"
 
 	"github.com/sethvargo/vault-init/client"
+	"github.com/sethvargo/vault-init/kms"
+	"github.com/sethvargo/vault-init/storage"
 	"github.com/sethvargo/vault-init/vault"
 )
 
@@ -45,12 +42,11 @@ var (
 
 	kmsKeyId string
 
-	storageClient *storage.Client
-
 	userAgent = fmt.Sprintf("vault-init/1.0.0 (%s)", runtime.Version())
 
-	vaultApi   vault.API
-	kmsService kms.Service
+	vaultApi       vault.API
+	kmsService     kms.Service
+	storageService storage.Service
 )
 
 func main() {
@@ -111,14 +107,9 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	storageCtx, storageCtxCancel := context.WithCancel(context.Background())
-	defer storageCtxCancel()
-	storageClient, err = storage.NewClient(storageCtx,
-		option.WithUserAgent(userAgent),
-		option.WithScopes(storage.ScopeReadWrite),
-	)
+	storageService, err = storage.NewStorage(ctx, userAgent, gcsBucketName)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
 	}
 
 	vc, err := client.NewClient(
@@ -147,7 +138,6 @@ func main() {
 	stop := func() {
 		log.Printf("Shutting down")
 		cancel()
-		storageCtxCancel()
 		os.Exit(0)
 	}
 
@@ -218,8 +208,6 @@ func initialize() {
 
 	log.Println("Encrypting unseal keys and the root token...")
 
-	bucket := storageClient.Bucket(gcsBucketName)
-
 	ctx := context.Background()
 
 	rt, err := kmsService.Encrypt(kmsKeyId, initResponse.RootToken)
@@ -227,12 +215,9 @@ func initialize() {
 		log.Println(err)
 		return
 	}
-	// Save the encrypted root token.
-	rootTokenObject := bucket.Object("root-token.enc").NewWriter(ctx)
-	defer rootTokenObject.Close()
 
-	_, err = rootTokenObject.Write(rt)
-	if err != nil {
+	// Save the encrypted root token.
+	if err := storageService.Put(ctx, "root-token.enc", rt); err != nil {
 		log.Println(err)
 	}
 
@@ -244,12 +229,8 @@ func initialize() {
 		return
 	}
 
-	// Save the encrypted unseal keys.
-	unsealKeysObject := bucket.Object("unseal-keys.json.enc").NewWriter(ctx)
-	defer unsealKeysObject.Close()
-
-	_, err = unsealKeysObject.Write(uk)
-	if err != nil {
+	// Save the encrypted root token.
+	if err := storageService.Put(ctx, "unseal-keys.json.enc", uk); err != nil {
 		log.Println(err)
 	}
 
@@ -259,18 +240,9 @@ func initialize() {
 }
 
 func unseal() {
-	bucket := storageClient.Bucket(gcsBucketName)
-
 	ctx := context.Background()
-	unsealKeysObject, err := bucket.Object("unseal-keys.json.enc").NewReader(ctx)
-	if err != nil {
-		log.Println(err)
-		return
-	}
 
-	defer unsealKeysObject.Close()
-
-	unsealKeysData, err := ioutil.ReadAll(unsealKeysObject)
+	data, err := storageService.Get(ctx, "unseal-keys.json.enc")
 	if err != nil {
 		log.Println(err)
 		return
@@ -278,7 +250,7 @@ func unseal() {
 
 	var initResponse vault.InitResponse
 
-	err = kmsService.Decrypt(kmsKeyId, unsealKeysData, &initResponse)
+	err = kmsService.Decrypt(kmsKeyId, data, &initResponse)
 	if err != nil {
 		log.Println(err)
 		return
