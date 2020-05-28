@@ -110,6 +110,13 @@ func main() {
 		"",
 		"The Google Cloud KMS key ID used to encrypt and decrypt the vault master key and root token.",
 	)
+	pflag.BoolVarP(
+		&cfg.Verbose,
+		"verbose",
+		"v",
+		false,
+		"Enables debug logs",
+	)
 	pflag.BoolVar(
 		&showVersion,
 		"version",
@@ -133,6 +140,8 @@ func main() {
 	bindEnv(pflag.Lookup("check-interval"), "CHECK_INTERVAL")
 	bindEnv(pflag.Lookup("gcs-bucket-name"), "GCS_BUCKET_NAME")
 	bindEnv(pflag.Lookup("kms-key-id"), "KMS_KEY_ID")
+
+	bindEnv(pflag.Lookup("verbose"), "DEBUG")
 
 	pflag.Parse()
 

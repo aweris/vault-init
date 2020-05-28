@@ -22,6 +22,9 @@ const (
 )
 
 type Config struct {
+	// Enables debug logs
+	Verbose bool
+
 	// Disable TLS validation when connecting. Setting to true is highly discouraged.
 	VaultInsecureSkipVerify bool
 
@@ -165,7 +168,10 @@ func (m *Manager) Start(ctx context.Context) error {
 					break
 				}
 			}
-
+		case vault.StatusActive, vault.StatusStandBy:
+			if m.cfg.Verbose {
+				log.Printf("Vault status: %s", status)
+			}
 		default:
 			log.Printf("Vault status: %s", status)
 		}
@@ -175,7 +181,9 @@ func (m *Manager) Start(ctx context.Context) error {
 			return nil
 		}
 
-		log.Printf("Next check in %s", m.cfg.CheckInterval)
+		if m.cfg.Verbose {
+			log.Printf("Next check in %s", m.cfg.CheckInterval)
+		}
 
 		<-time.After(m.cfg.CheckInterval)
 	}
