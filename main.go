@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -26,6 +25,9 @@ import (
 	"google.golang.org/api/option"
 
 	"github.com/spf13/pflag"
+
+	"github.com/sethvargo/vault-init/client"
+	"github.com/sethvargo/vault-init/vault"
 )
 
 var (
@@ -36,7 +38,6 @@ var (
 
 	vaultAddr     string
 	gcsBucketName string
-	httpClient    http.Client
 
 	vaultSecretShares      int
 	vaultSecretThreshold   int
@@ -50,37 +51,9 @@ var (
 	storageClient *storage.Client
 
 	userAgent = fmt.Sprintf("vault-init/1.0.0 (%s)", runtime.Version())
+
+	vaultApi vault.API
 )
-
-// InitRequest holds a Vault init request.
-type InitRequest struct {
-	SecretShares      int `json:"secret_shares"`
-	SecretThreshold   int `json:"secret_threshold"`
-	StoredShares      int `json:"stored_shares"`
-	RecoveryShares    int `json:"recovery_shares"`
-	RecoveryThreshold int `json:"recovery_threshold"`
-}
-
-// InitResponse holds a Vault init response.
-type InitResponse struct {
-	Keys       []string `json:"keys"`
-	KeysBase64 []string `json:"keys_base64"`
-	RootToken  string   `json:"root_token"`
-}
-
-// UnsealRequest holds a Vault unseal request.
-type UnsealRequest struct {
-	Key   string `json:"key"`
-	Reset bool   `json:"reset"`
-}
-
-// UnsealResponse holds a Vault unseal response.
-type UnsealResponse struct {
-	Sealed   bool `json:"sealed"`
-	T        int  `json:"t"`
-	N        int  `json:"n"`
-	Progress int  `json:"progress"`
-}
 
 func main() {
 	var (
@@ -150,13 +123,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	httpClient = http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: vaultInsecureSkipVerify,
+	vc, err := client.NewClient(
+		&client.Config{
+			Address: vaultAddr,
+			HttpClient: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: vaultInsecureSkipVerify,
+					},
+				},
 			},
 		},
+	)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	vaultApi = vault.NewVaultAPI(vc)
 
 	// graceful shutdown
 	signalCh := make(chan os.Signal, 1)
@@ -171,29 +154,22 @@ func main() {
 	}
 
 	for {
+
 		select {
 		case <-signalCh:
 			stop()
 		default:
+			// intentional left blank
 		}
-		response, err := httpClient.Head(vaultAddr + "/v1/sys/health")
 
-		if response != nil && response.Body != nil {
-			response.Body.Close()
-		}
+		status, err := vaultApi.Status()
 
 		if err != nil {
 			log.Println(err)
-			time.Sleep(checkInterval)
-			continue
 		}
 
-		switch response.StatusCode {
-		case 200:
-			log.Println("Vault is initialized and unsealed.")
-		case 429:
-			log.Println("Vault is unsealed and in standby mode.")
-		case 501:
+		switch status {
+		case vault.StatusNotInit:
 			log.Println("Vault is not initialized.")
 			log.Println("Initializing...")
 			initialize()
@@ -201,14 +177,14 @@ func main() {
 				log.Println("Unsealing...")
 				unseal()
 			}
-		case 503:
+		case vault.StatusSealed:
 			log.Println("Vault is sealed.")
 			if !vaultAutoUnseal {
 				log.Println("Unsealing...")
 				unseal()
 			}
 		default:
-			log.Printf("Vault is in an unknown state. Status code: %d", response.StatusCode)
+			log.Printf("Vault status: %s", status)
 		}
 
 		if checkInterval <= 0 {
@@ -227,48 +203,17 @@ func main() {
 }
 
 func initialize() {
-	initRequest := InitRequest{
-		SecretShares:      vaultSecretShares,
-		SecretThreshold:   vaultSecretThreshold,
-		StoredShares:      vaultStoredShares,
-		RecoveryShares:    vaultRecoveryShares,
-		RecoveryThreshold: vaultRecoveryThreshold,
-	}
 
-	initRequestData, err := json.Marshal(&initRequest)
+	initResponse, err := vaultApi.Init(
+		&vault.InitRequest{
+			SecretShares:      vaultSecretShares,
+			SecretThreshold:   vaultSecretThreshold,
+			StoredShares:      vaultStoredShares,
+			RecoveryShares:    vaultRecoveryShares,
+			RecoveryThreshold: vaultRecoveryThreshold,
+		},
+	)
 	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	r := bytes.NewReader(initRequestData)
-	request, err := http.NewRequest("PUT", vaultAddr+"/v1/sys/init", r)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	defer response.Body.Close()
-
-	initRequestResponseBody, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	if response.StatusCode != 200 {
-		log.Printf("init: non 200 status code: %d", response.StatusCode)
-		return
-	}
-
-	var initResponse InitResponse
-
-	if err := json.Unmarshal(initRequestResponseBody, &initResponse); err != nil {
 		log.Println(err)
 		return
 	}
@@ -285,8 +230,14 @@ func initialize() {
 		return
 	}
 
+	data, err := json.Marshal(initResponse)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
 	unsealKeysEncryptRequest := &cloudkms.EncryptRequest{
-		Plaintext: base64.StdEncoding.EncodeToString(initRequestResponseBody),
+		Plaintext: base64.StdEncoding.EncodeToString(data),
 	}
 
 	unsealKeysEncryptResponse, err := kmsService.Projects.Locations.KeyRings.CryptoKeys.Encrypt(kmsKeyId, unsealKeysEncryptRequest).Do()
@@ -351,7 +302,7 @@ func unseal() {
 		return
 	}
 
-	var initResponse InitResponse
+	var initResponse vault.InitResponse
 
 	unsealKeysPlaintext, err := base64.StdEncoding.DecodeString(unsealKeysDecryptResponse.Plaintext)
 	if err != nil {
@@ -378,46 +329,16 @@ func unseal() {
 }
 
 func unsealOne(key string) (bool, error) {
-	unsealRequest := UnsealRequest{
-		Key: key,
-	}
-
-	unsealRequestData, err := json.Marshal(&unsealRequest)
+	unsealResponse, err := vaultApi.Unseal(
+		&vault.UnsealRequest{
+			Key: key,
+		},
+	)
 	if err != nil {
 		return false, err
 	}
 
-	r := bytes.NewReader(unsealRequestData)
-	request, err := http.NewRequest(http.MethodPut, vaultAddr+"/v1/sys/unseal", r)
-	if err != nil {
-		return false, err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return false, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != 200 {
-		return false, fmt.Errorf("unseal: non-200 status code: %d", response.StatusCode)
-	}
-
-	unsealRequestResponseBody, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return false, err
-	}
-
-	var unsealResponse UnsealResponse
-	if err := json.Unmarshal(unsealRequestResponseBody, &unsealResponse); err != nil {
-		return false, err
-	}
-
-	if !unsealResponse.Sealed {
-		return true, nil
-	}
-
-	return false, nil
+	return !unsealResponse.Sealed, nil
 }
 
 func boolFromEnv(env string, def bool) bool {
