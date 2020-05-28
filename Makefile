@@ -39,8 +39,8 @@ default: help
 
 .PHONY: vault-init
 vault-init: ## Builds vault-init binary
-vault-init: vendor main.go $(wildcard *.go) $(wildcard */*.go) $(BUILD_DIR) ; $(info $(M) building binary)
-	$(Q) CGO_ENABLED=0 $(GOBUILD) -a -tags netgo -trimpath -ldflags $(BUILD_LDFLAGS) -o $(BUILD_DIR)/$@ main.go
+vault-init: vendor cmd/main.go $(wildcard *.go) $(wildcard */*.go) $(BUILD_DIR) ; $(info $(M) building binary)
+	$(Q) CGO_ENABLED=0 $(GOBUILD) -a -tags netgo -trimpath -ldflags $(BUILD_LDFLAGS) -o $(BUILD_DIR)/$@ cmd/main.go
 
 .PHONY: vendor
 vendor: ## Updates vendored copy of dependencies
