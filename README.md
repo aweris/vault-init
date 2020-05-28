@@ -13,7 +13,7 @@ You can download the code and compile the binary with Go. Alternatively, a
 Docker container is available via the Docker Hub:
 
 ```text
-$ docker pull sethvargo/vault-init
+$ docker pull aweris/vault-init
 ```
 
 To use this as part of a Kubernetes Vault Deployment:
@@ -31,6 +31,25 @@ containers:
 ```
 
 ## Configuration
+
+```bash
+Usage of vault-init:
+      --check-interval duration        The time duration between Vault health checks. Set this to a negative number to unseal once and exit. (default 30s)
+      --gcs-bucket-name string         The Google Cloud Storage Bucket where the vault master key and root token is stored.
+      --kms-key-id string              The Google Cloud KMS key ID used to encrypt and decrypt the vault master key and root token.
+      --vault-addr string              Address of the vault service (default "https://127.0.0.1:8200")
+      --vault-auto-unseal              Use Vault 1.0 native auto-unsealing directly. You must set the seal configuration in Vault's configuration. (default true)
+      --vault-cacert string            Path to a PEM-encoded CA certificate file on the local disk
+      --vault-recovery-shares int      Number of recovery shares to generate. Only applies to Vault 1.0 native auto-unseal. (default 1)
+      --vault-recovery-threshold int    Number of recovery shares needed to unseal. Only applies to Vault 1.0 native auto-unseal. (default 1)
+      --vault-secret-shares int        The number of human shares to create. (default 5)
+      --vault-secret-threshold int     The number of human shares required to unseal. (default 3)
+      --vault-skip-verify              Disable TLS validation when connecting. Setting to true is highly discouraged.
+      --vault-stored-shares int        Number of shares to store on KMS. Only applies to Vault 1.0 native auto-unseal. (default 1)
+  -v, --verbose                        Enables debug logs
+      --version                        Prints version info
+
+```
 
 The vault-init service supports the following environment variables for configuration:
 
@@ -62,12 +81,34 @@ The vault-init service supports the following environment variables for configur
 - `VAULT_SKIP_VERIFY` (false) - Disable TLS validation when connecting. Setting
   to true is highly discouraged.
 
+- `VAULT_ADDR` ("https://127.0.0.1:8200") - Address of the vault service.
+
+- `VAULT_CACERT` - Path to a PEM-encoded CA certificate file on the local disk.
+
 ### Example Values
 
 ```
 CHECK_INTERVAL="30s"
 GCS_BUCKET_NAME="vault-storage"
 KMS_KEY_ID="projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys/key"
+```
+
+### Development
+
+```
+Usage:
+  make <target>
+
+Targets:
+  vault-init              Builds vault-init binary
+  vendor                  Updates vendored copy of dependencies
+  fix                     Fix found issues (if it's supported by the $(GOLANGCILINT))
+  fmt                     Runs gofmt
+  lint                    Runs golangci-lint analysis
+  clean                   Cleanup everything
+  test                    Runs go test
+  install-tools           Install tools
+  help                    shows this help message
 ```
 
 ### IAM &amp; Permissions
