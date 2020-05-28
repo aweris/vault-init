@@ -6,23 +6,17 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
-	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/spf13/pflag"
 
-	"github.com/sethvargo/vault-init/client"
-	"github.com/sethvargo/vault-init/kms"
-	"github.com/sethvargo/vault-init/storage"
-	"github.com/sethvargo/vault-init/vault"
+	"github.com/sethvargo/vault-init/manager"
 )
 
 var (
@@ -30,31 +24,50 @@ var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
-
-	vaultAddr     string
-	gcsBucketName string
-
-	vaultSecretShares      int
-	vaultSecretThreshold   int
-	vaultStoredShares      int
-	vaultRecoveryShares    int
-	vaultRecoveryThreshold int
-
-	kmsKeyId string
-
-	userAgent = fmt.Sprintf("vault-init/1.0.0 (%s)", runtime.Version())
-
-	vaultApi       vault.API
-	kmsService     kms.Service
-	storageService storage.Service
 )
 
 func main() {
 	var (
+		cfg = &manager.Config{
+			UserAgent: fmt.Sprintf("vault-init/%s (%s)", version, runtime.Version()),
+		}
+
 		showVersion bool
 	)
 
+	pflag.BoolVar(&cfg.VaultInsecureSkipVerify, "vault-skip-verify", false, "Disable TLS validation when connecting. Setting to true is highly discouraged.")
+	pflag.BoolVar(&cfg.VaultAutoUnseal, "vault-auto-unseal", true, "Use Vault 1.0 native auto-unsealing directly. You must set the seal configuration in Vault's configuration.")
+
+	pflag.IntVar(&cfg.VaultSecretShares, "vault-secret-shares", 5, "The number of human shares to create.")
+	pflag.IntVar(&cfg.VaultSecretThreshold, "vault-secret-threshold", 3, "The number of human shares required to unseal.")
+	pflag.IntVar(&cfg.VaultStoredShares, "vault-stored-shares", 1, "Number of shares to store on KMS. Only applies to Vault 1.0 native auto-unseal.")
+	pflag.IntVar(&cfg.VaultRecoveryShares, "vault-recovery-shares", 1, "Number of recovery shares to generate. Only applies to Vault 1.0 native auto-unseal.")
+	pflag.IntVar(&cfg.VaultRecoveryThreshold, "vault-recovery-threshold", 1, " Number of recovery shares needed to unseal. Only applies to Vault 1.0 native auto-unseal.")
+
+	pflag.StringVar(&cfg.VaultAddress, "vault-addr", "https://127.0.0.1:8200", "Address of the vault service")
+
+	pflag.DurationVar(&cfg.CheckInterval, "check-interval", 30*time.Second, "The time duration between Vault health checks. Set this to a negative number to unseal once and exit.")
+
+	pflag.StringVar(&cfg.GcsBucketName, "gcs-bucket-name", "", "The Google Cloud Storage Bucket where the vault master key and root token is stored.")
+	pflag.StringVar(&cfg.KmsKeyID, "kms-key-id", "", "The Google Cloud KMS key ID used to encrypt and decrypt the vault master key and root token.")
+
 	pflag.BoolVar(&showVersion, "version", false, "Prints version info")
+
+	bindEnv(pflag.Lookup("vault-addr"), "VAULT_ADDR")
+
+	bindEnv(pflag.Lookup("vault-secret-shares"), "VAULT_SECRET_SHARES")
+	bindEnv(pflag.Lookup("vault-secret-threshold"), "VAULT_SECRET_THRESHOLD")
+
+	bindEnv(pflag.Lookup("vault-skip-verify"), "VAULT_SKIP_VERIFY")
+
+	bindEnv(pflag.Lookup("vault-auto-unseal"), "VAULT_AUTO_UNSEAL")
+	bindEnv(pflag.Lookup("vault-stored-shares"), "VAULT_STORED_SHARES")
+	bindEnv(pflag.Lookup("vault-recovery-shares"), "VAULT_RECOVERY_SHARES")
+	bindEnv(pflag.Lookup("vault-recovery-threshold"), "VAULT_RECOVERY_THRESHOLD")
+
+	bindEnv(pflag.Lookup("check-interval"), "CHECK_INTERVAL")
+	bindEnv(pflag.Lookup("gcs-bucket-name"), "GCS_BUCKET_NAME")
+	bindEnv(pflag.Lookup("kms-key-id"), "KMS_KEY_ID")
 
 	pflag.Parse()
 
@@ -67,257 +80,53 @@ func main() {
 
 	log.Println("Starting the vault-init service...")
 
-	//vaultAddr = os.Getenv("VAULT_ADDR")
-	if vaultAddr == "" {
-		vaultAddr = "http://127.0.0.1:8200"
+	if cfg.GcsBucketName == "" {
+		log.Fatal("missing GCS_BUCKET_NAME")
 	}
 
-	vaultSecretShares = intFromEnv("VAULT_SECRET_SHARES", 5)
-	vaultSecretThreshold = intFromEnv("VAULT_SECRET_THRESHOLD", 3)
-
-	vaultInsecureSkipVerify := boolFromEnv("VAULT_SKIP_VERIFY", false)
-
-	vaultAutoUnseal := boolFromEnv("VAULT_AUTO_UNSEAL", true)
-
-	if vaultAutoUnseal {
-		vaultStoredShares = intFromEnv("VAULT_STORED_SHARES", 1)
-		vaultRecoveryShares = intFromEnv("VAULT_RECOVERY_SHARES", 1)
-		vaultRecoveryThreshold = intFromEnv("VAULT_RECOVERY_THRESHOLD", 1)
-	}
-
-	checkInterval := durFromEnv("CHECK_INTERVAL", 10*time.Second)
-
-	gcsBucketName = os.Getenv("GCS_BUCKET_NAME")
-	if gcsBucketName == "" {
-		log.Fatal("GCS_BUCKET_NAME must be set and not empty")
-	}
-
-	kmsKeyId = os.Getenv("KMS_KEY_ID")
-	if kmsKeyId == "" {
-		log.Fatal("KMS_KEY_ID must be set and not empty")
+	if cfg.KmsKeyID == "" {
+		log.Fatal("missing KMS_KEY_ID")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	var err error
-
-	kmsService, err = kms.NewService(ctx, userAgent)
+	m, err := manager.NewManager(ctx, cfg)
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	storageService, err = storage.NewStorage(ctx, userAgent, gcsBucketName)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	vc, err := client.NewClient(
-		&client.Config{
-			Address: vaultAddr,
-			HttpClient: &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: vaultInsecureSkipVerify,
-					},
-				},
-			},
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	vaultApi = vault.NewVaultAPI(vc)
 
 	// graceful shutdown
-	signalCh := make(chan os.Signal, 1)
+	c := make(chan os.Signal, 1)
 
-	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 
-	stop := func() {
-		log.Printf("Shutting down")
+	go func() {
+		oscall := <-c
+
+		log.Printf("system call:%+v", oscall)
+
 		cancel()
+
 		os.Exit(0)
-	}
+	}()
 
-	for {
-
-		select {
-		case <-signalCh:
-			stop()
-		default:
-			// intentional left blank
-		}
-
-		status, err := vaultApi.Status()
-
-		if err != nil {
-			log.Println(err)
-		}
-
-		switch status {
-		case vault.StatusNotInit:
-			log.Println("Vault is not initialized.")
-			log.Println("Initializing...")
-			initialize()
-			if !vaultAutoUnseal {
-				log.Println("Unsealing...")
-				unseal()
-			}
-		case vault.StatusSealed:
-			log.Println("Vault is sealed.")
-			if !vaultAutoUnseal {
-				log.Println("Unsealing...")
-				unseal()
-			}
-		default:
-			log.Printf("Vault status: %s", status)
-		}
-
-		if checkInterval <= 0 {
-			log.Printf("Check interval set to less than 0, exiting.")
-			stop()
-		}
-
-		log.Printf("Next check in %s", checkInterval)
-
-		select {
-		case <-signalCh:
-			stop()
-		case <-time.After(checkInterval):
-		}
+	// start manager
+	err = m.Start(ctx)
+	if err != nil {
+		log.Fatalln(err)
 	}
 }
 
-func initialize() {
-
-	initResponse, err := vaultApi.Init(
-		&vault.InitRequest{
-			SecretShares:      vaultSecretShares,
-			SecretThreshold:   vaultSecretThreshold,
-			StoredShares:      vaultStoredShares,
-			RecoveryShares:    vaultRecoveryShares,
-			RecoveryThreshold: vaultRecoveryThreshold,
-		},
-	)
-	if err != nil {
-		log.Println(err)
+func bindEnv(fn *pflag.Flag, env string) {
+	if fn == nil || fn.Changed {
 		return
 	}
 
-	log.Println("Encrypting unseal keys and the root token...")
-
-	ctx := context.Background()
-
-	rt, err := kmsService.Encrypt(kmsKeyId, initResponse.RootToken)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// Save the encrypted root token.
-	if err := storageService.Put(ctx, "root-token.enc", rt); err != nil {
-		log.Println(err)
-	}
-
-	log.Printf("Root token written to gs://%s/%s", gcsBucketName, "root-token.enc")
-
-	uk, err := kmsService.Encrypt(kmsKeyId, initResponse)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// Save the encrypted root token.
-	if err := storageService.Put(ctx, "unseal-keys.json.enc", uk); err != nil {
-		log.Println(err)
-	}
-
-	log.Printf("Unseal keys written to gs://%s/%s", gcsBucketName, "unseal-keys.json.enc")
-
-	log.Println("Initialization complete.")
-}
-
-func unseal() {
-	ctx := context.Background()
-
-	data, err := storageService.Get(ctx, "unseal-keys.json.enc")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	var initResponse vault.InitResponse
-
-	err = kmsService.Decrypt(kmsKeyId, data, &initResponse)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	for _, key := range initResponse.KeysBase64 {
-		done, err := unsealOne(key)
-		if done {
-			return
-		}
-
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}
-}
-
-func unsealOne(key string) (bool, error) {
-	unsealResponse, err := vaultApi.Unseal(
-		&vault.UnsealRequest{
-			Key: key,
-		},
-	)
-	if err != nil {
-		return false, err
-	}
-
-	return !unsealResponse.Sealed, nil
-}
-
-func boolFromEnv(env string, def bool) bool {
 	val := os.Getenv(env)
-	if val == "" {
-		return def
-	}
-	b, err := strconv.ParseBool(val)
-	if err != nil {
-		log.Fatalf("failed to parse %q: %s", env, err)
-	}
-	return b
-}
 
-func intFromEnv(env string, def int) int {
-	val := os.Getenv(env)
-	if val == "" {
-		return def
+	if len(val) > 0 {
+		if err := fn.Value.Set(val); err != nil {
+			log.Fatalf("failed to bind env: %v\n", err)
+		}
 	}
-	i, err := strconv.Atoi(val)
-	if err != nil {
-		log.Fatalf("failed to parse %q: %s", env, err)
-	}
-	return i
-}
-
-func durFromEnv(env string, def time.Duration) time.Duration {
-	val := os.Getenv(env)
-	if val == "" {
-		return def
-	}
-	r := val[len(val)-1]
-	if r >= '0' || r <= '9' {
-		val = val + "s" // assume seconds
-	}
-	d, err := time.ParseDuration(val)
-	if err != nil {
-		log.Fatalf("failed to parse %q: %s", env, err)
-	}
-	return d
 }
