@@ -1,8 +1,9 @@
 package vault
 
 import (
-	"fmt"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 // UnsealRequest holds a Vault unseal request.
@@ -33,7 +34,7 @@ func (v *vault) Unseal(unsealReq *UnsealRequest) (*UnsealResponse, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unseal failed with status code: %v", res.StatusCode)
+		return nil, errors.Wrapf(ErrFailedToUnseal, "status code: %d", res.StatusCode)
 	}
 
 	var ur UnsealResponse

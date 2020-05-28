@@ -17,7 +17,7 @@ import (
 
 const (
 	// file names
-	rootTokenEnc  = "root-token.enc"
+	rootTokenEnc  = "root-token.enc" /* #nosec */
 	unsealKeysEnc = "unseal-keys.json.enc"
 )
 
@@ -85,6 +85,7 @@ func NewManager(ctx context.Context, cfg *Config) (man *Manager, err error) {
 		return nil, err
 	}
 
+	// #nosec
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: cfg.VaultInsecureSkipVerify,
 	}
@@ -95,7 +96,9 @@ func NewManager(ctx context.Context, cfg *Config) (man *Manager, err error) {
 		if err != nil {
 			return nil, err
 		}
+
 		caCertPool := x509.NewCertPool()
+
 		caCertPool.AppendCertsFromPEM(caCert)
 
 		// Setup HTTPS client
@@ -105,7 +108,7 @@ func NewManager(ctx context.Context, cfg *Config) (man *Manager, err error) {
 	vc, err := client.NewClient(
 		&client.Config{
 			Address: cfg.VaultAddress,
-			HttpClient: &http.Client{
+			HTTPClient: &http.Client{
 				Transport: &http.Transport{
 					TLSClientConfig: tlsConfig,
 				},
@@ -123,7 +126,6 @@ func NewManager(ctx context.Context, cfg *Config) (man *Manager, err error) {
 }
 
 func (m *Manager) Start(ctx context.Context) error {
-
 	for {
 		status, err := m.va.Status()
 		if err != nil {

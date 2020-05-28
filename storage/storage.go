@@ -1,10 +1,11 @@
 package storage
 
 import (
-	gcs "cloud.google.com/go/storage"
 	"context"
-	"google.golang.org/api/option"
 	"io/ioutil"
+
+	gcs "cloud.google.com/go/storage"
+	"google.golang.org/api/option"
 )
 
 type Service interface {

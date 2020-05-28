@@ -12,14 +12,14 @@ type Config struct {
 	// URL such as "http://vault.example.com".
 	Address string
 
-	// HttpClient is the HTTP client to use.
-	HttpClient *http.Client
+	// HTTPClient is the HTTP client to use.
+	HTTPClient *http.Client
 
-	// Timeout is for setting custom timeout parameter in the HttpClient
+	// Timeout is for setting custom timeout parameter in the HTTPClient
 	Timeout time.Duration
 }
 
-// Client is a simple http client wrapper
+// Client is a simple http client wrapper.
 type Client struct {
 	address *url.URL
 	config  *Config
@@ -34,12 +34,12 @@ func NewClient(cfg *Config) (*Client, error) {
 		cfg.Address = "https://127.0.0.1:8200"
 	}
 
-	if cfg.HttpClient == nil {
-		cfg.HttpClient = http.DefaultClient
+	if cfg.HTTPClient == nil {
+		cfg.HTTPClient = http.DefaultClient
 	}
 
 	if cfg.Timeout == 0 {
-		cfg.Timeout = time.Second * 60
+		cfg.Timeout = 60 * time.Second //nolint:gomnd
 	}
 
 	u, err := url.Parse(cfg.Address)
@@ -54,12 +54,13 @@ func NewClient(cfg *Config) (*Client, error) {
 }
 
 func (c *Client) Do(req *Request) (*Response, error) {
-	httpReq, err := req.toHttpReq()
+	httpReq, err := req.toHTTPReq()
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := c.config.HttpClient.Do(httpReq)
+	//nolint: bodyclose
+	res, err := c.config.HTTPClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}

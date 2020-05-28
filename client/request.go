@@ -36,9 +36,10 @@ func (r *Request) SetJSONBody(val interface{}) error {
 	}
 
 	r.body = buf
+
 	return nil
 }
 
-func (r *Request) toHttpReq() (*http.Request, error) {
+func (r *Request) toHTTPReq() (*http.Request, error) {
 	return http.NewRequest(r.method, r.url.String(), ioutil.NopCloser(bytes.NewReader(r.body)))
 }

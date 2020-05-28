@@ -1,8 +1,9 @@
 package vault
 
 import (
-	"fmt"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 type InitRequest struct {
@@ -34,7 +35,7 @@ func (v *vault) Init(initReq *InitRequest) (*InitResponse, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("init failed with status code: %v", res.StatusCode)
+		return nil, errors.Wrapf(ErrFailedToInit, "status code: %d", res.StatusCode)
 	}
 
 	var ir InitResponse

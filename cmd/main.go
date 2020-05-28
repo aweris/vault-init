@@ -22,10 +22,13 @@ import (
 var (
 	// version flags
 	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	//nolint:gochecknoglobals
+	commit = "none"
+	//nolint:gochecknoglobals
+	date = "unknown"
 )
 
+//nolint:funlen
 func main() {
 	var (
 		cfg = &manager.Config{
@@ -35,24 +38,84 @@ func main() {
 		showVersion bool
 	)
 
-	pflag.BoolVar(&cfg.VaultInsecureSkipVerify, "vault-skip-verify", false, "Disable TLS validation when connecting. Setting to true is highly discouraged.")
-	pflag.BoolVar(&cfg.VaultAutoUnseal, "vault-auto-unseal", true, "Use Vault 1.0 native auto-unsealing directly. You must set the seal configuration in Vault's configuration.")
-
-	pflag.IntVar(&cfg.VaultSecretShares, "vault-secret-shares", 5, "The number of human shares to create.")
-	pflag.IntVar(&cfg.VaultSecretThreshold, "vault-secret-threshold", 3, "The number of human shares required to unseal.")
-	pflag.IntVar(&cfg.VaultStoredShares, "vault-stored-shares", 1, "Number of shares to store on KMS. Only applies to Vault 1.0 native auto-unseal.")
-	pflag.IntVar(&cfg.VaultRecoveryShares, "vault-recovery-shares", 1, "Number of recovery shares to generate. Only applies to Vault 1.0 native auto-unseal.")
-	pflag.IntVar(&cfg.VaultRecoveryThreshold, "vault-recovery-threshold", 1, " Number of recovery shares needed to unseal. Only applies to Vault 1.0 native auto-unseal.")
-
-	pflag.StringVar(&cfg.VaultAddress, "vault-addr", "https://127.0.0.1:8200", "Address of the vault service")
-	pflag.StringVar(&cfg.VaultCACert, "vault-cacert", "", "Path to a PEM-encoded CA certificate file on the local disk")
-
-	pflag.DurationVar(&cfg.CheckInterval, "check-interval", 30*time.Second, "The time duration between Vault health checks. Set this to a negative number to unseal once and exit.")
-
-	pflag.StringVar(&cfg.GcsBucketName, "gcs-bucket-name", "", "The Google Cloud Storage Bucket where the vault master key and root token is stored.")
-	pflag.StringVar(&cfg.KmsKeyID, "kms-key-id", "", "The Google Cloud KMS key ID used to encrypt and decrypt the vault master key and root token.")
-
-	pflag.BoolVar(&showVersion, "version", false, "Prints version info")
+	pflag.BoolVar(
+		&cfg.VaultInsecureSkipVerify,
+		"vault-skip-verify",
+		false,
+		"Disable TLS validation when connecting. Setting to true is highly discouraged.",
+	)
+	pflag.BoolVar(
+		&cfg.VaultAutoUnseal,
+		"vault-auto-unseal",
+		true,
+		"Use Vault 1.0 native auto-unsealing directly. You must set the seal configuration in Vault's configuration.",
+	)
+	pflag.IntVar(
+		&cfg.VaultSecretShares,
+		"vault-secret-shares",
+		5,
+		"The number of human shares to create.",
+	)
+	pflag.IntVar(
+		&cfg.VaultSecretThreshold,
+		"vault-secret-threshold",
+		3,
+		"The number of human shares required to unseal.",
+	)
+	pflag.IntVar(
+		&cfg.VaultStoredShares,
+		"vault-stored-shares",
+		1,
+		"Number of shares to store on KMS. Only applies to Vault 1.0 native auto-unseal.",
+	)
+	pflag.IntVar(
+		&cfg.VaultRecoveryShares,
+		"vault-recovery-shares",
+		1,
+		"Number of recovery shares to generate. Only applies to Vault 1.0 native auto-unseal.",
+	)
+	pflag.IntVar(
+		&cfg.VaultRecoveryThreshold,
+		"vault-recovery-threshold",
+		1,
+		" Number of recovery shares needed to unseal. Only applies to Vault 1.0 native auto-unseal.",
+	)
+	pflag.StringVar(
+		&cfg.VaultAddress,
+		"vault-addr",
+		"https://127.0.0.1:8200",
+		"Address of the vault service",
+	)
+	pflag.StringVar(
+		&cfg.VaultCACert,
+		"vault-cacert",
+		"",
+		"Path to a PEM-encoded CA certificate file on the local disk",
+	)
+	pflag.DurationVar(
+		&cfg.CheckInterval,
+		"check-interval",
+		30*time.Second, //nolint:gomnd
+		"The time duration between Vault health checks. Set this to a negative number to unseal once and exit.",
+	)
+	pflag.StringVar(
+		&cfg.GcsBucketName,
+		"gcs-bucket-name",
+		"",
+		"The Google Cloud Storage Bucket where the vault master key and root token is stored.",
+	)
+	pflag.StringVar(
+		&cfg.KmsKeyID,
+		"kms-key-id",
+		"",
+		"The Google Cloud KMS key ID used to encrypt and decrypt the vault master key and root token.",
+	)
+	pflag.BoolVar(
+		&showVersion,
+		"version",
+		false,
+		"Prints version info",
+	)
 
 	bindEnv(pflag.Lookup("vault-addr"), "VAULT_ADDR")
 	bindEnv(pflag.Lookup("vault-cacert"), "VAULT_CACERT")
