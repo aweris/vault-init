@@ -45,6 +45,7 @@ func main() {
 	pflag.IntVar(&cfg.VaultRecoveryThreshold, "vault-recovery-threshold", 1, " Number of recovery shares needed to unseal. Only applies to Vault 1.0 native auto-unseal.")
 
 	pflag.StringVar(&cfg.VaultAddress, "vault-addr", "https://127.0.0.1:8200", "Address of the vault service")
+	pflag.StringVar(&cfg.VaultCACert, "vault-cacert", "", "Path to a PEM-encoded CA certificate file on the local disk")
 
 	pflag.DurationVar(&cfg.CheckInterval, "check-interval", 30*time.Second, "The time duration between Vault health checks. Set this to a negative number to unseal once and exit.")
 
@@ -54,6 +55,7 @@ func main() {
 	pflag.BoolVar(&showVersion, "version", false, "Prints version info")
 
 	bindEnv(pflag.Lookup("vault-addr"), "VAULT_ADDR")
+	bindEnv(pflag.Lookup("vault-cacert"), "VAULT_CACERT")
 
 	bindEnv(pflag.Lookup("vault-secret-shares"), "VAULT_SECRET_SHARES")
 	bindEnv(pflag.Lookup("vault-secret-threshold"), "VAULT_SECRET_THRESHOLD")

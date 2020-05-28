@@ -3,6 +3,8 @@ package manager
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
@@ -44,6 +46,9 @@ type Config struct {
 	// Address of the vault service
 	VaultAddress string
 
+	// Path to a PEM-encoded CA certificate file on the local disk.
+	VaultCACert string
+
 	// The time duration between Vault health checks. Set this to a negative number to unseal once and exit.
 	CheckInterval time.Duration
 
@@ -80,14 +85,29 @@ func NewManager(ctx context.Context, cfg *Config) (man *Manager, err error) {
 		return nil, err
 	}
 
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: cfg.VaultInsecureSkipVerify,
+	}
+
+	if cfg.VaultCACert != "" {
+		// Load CA cert
+		caCert, err := ioutil.ReadFile(cfg.VaultCACert)
+		if err != nil {
+			return nil, err
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		// Setup HTTPS client
+		tlsConfig.RootCAs = caCertPool
+	}
+
 	vc, err := client.NewClient(
 		&client.Config{
 			Address: cfg.VaultAddress,
 			HttpClient: &http.Client{
 				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: cfg.VaultInsecureSkipVerify,
-					},
+					TLSClientConfig: tlsConfig,
 				},
 			},
 		},
